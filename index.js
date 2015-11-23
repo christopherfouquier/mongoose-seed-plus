@@ -8,7 +8,8 @@ var _ 			= require('lodash'),
 	async 		= require('async'),
 	mongoose 	= require('mongoose'),
 	chalk 		= require('chalk'),
-	path 		= require('path');
+	path 		= require('path'),
+	spawn 		= require('child_process').spawn;
 
 function Seeder() {
 	this.connected = false;
@@ -16,6 +17,7 @@ function Seeder() {
 
 Seeder.prototype.connect = function(db, cb) {
 	var _this = this;
+	this.db = db;
 	mongoose.connect(db, function(err) {
 		// Log Error
 		if (err) {
@@ -29,8 +31,12 @@ Seeder.prototype.connect = function(db, cb) {
 	});
 };
 
-Seeder.prototype.start = function(path, models) {
+Seeder.prototype.start = function(path, models, dump) {
 	var self = this;
+
+	if (dump && typeof(dump) === "boolean" && dump === true)
+		this.dump(path);
+
 	this.loadModels(models);
 	this.clearModels(models, function() {
 		self.readData(path, models, function(data) {
@@ -165,5 +171,28 @@ Seeder.prototype.populateModels = function(seedData) {
 
 	});
 };
+
+Seeder.prototype.dump = function(path) {
+	var db = this.db.split('/'),
+		dbname = '',
+		date = new Date();
+
+	if (typeof db[3] !== 'undefined') {
+		dbname = db[3];
+	}
+
+	var args = ['--db', dbname, '--out', path + '../backup/' + dbname + '-' + date.getTime(), '--quiet'];
+	var mongodump = spawn('/usr/local/bin/mongodump', args);
+
+	mongodump.stdout.on('data', function (data) {
+	   	console.error(chalk.red('stdout: ' + data));
+	});
+	mongodump.stderr.on('data', function (data) {
+	   	console.error(chalk.red('stderr: ' + data));
+	});
+	mongodump.on('exit', function (code) {
+	   	console.log(chalk.green('Successfully dump mongoose-seed'));
+	});
+}
 
 module.exports = new Seeder();
