@@ -2,6 +2,10 @@
 
 mongoose-seed-plus lets you populate and clear MongoDB documents with all the benefits of Mongoose validation
 
+```
+npm install mongoose-seed-plus --save-dev
+```
+
 ## Basic example
 
 ```javascript

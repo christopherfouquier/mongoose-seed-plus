@@ -32,17 +32,25 @@ Seeder.prototype.connect = function(db, cb) {
 };
 
 Seeder.prototype.start = function(path, models, dump) {
-	var self = this;
+	var _this = this;
 
-	if (dump && typeof(dump) === "boolean" && dump === true)
-		this.dump(path);
-
-	this.loadModels(models);
-	this.clearModels(models, function() {
-		self.readData(path, models, function(data) {
-			self.populateModels(data);
+	if (dump && typeof(dump) === 'boolean' && dump === true) {
+		this.dump(path, function() {
+			_this.loadModels(models);
+			_this.clearModels(models, function() {
+				_this.readData(path, models, function(data) {
+					_this.populateModels(data);
+				});
+			});
 		});
-	});
+	} else {
+		this.loadModels(models);
+		this.clearModels(models, function() {
+			_this.readData(path, models, function(data) {
+				_this.populateModels(data);
+			});
+		});
+	}
 };
 
 Seeder.prototype.readData = function(path, models, cb) {
@@ -172,16 +180,16 @@ Seeder.prototype.populateModels = function(seedData) {
 	});
 };
 
-Seeder.prototype.dump = function(path) {
+Seeder.prototype.dump = function(path, cb) {
 	var db = this.db.split('/'),
 		dbname = '',
 		date = new Date();
 
-	if (typeof db[3] !== 'undefined') {
+	if (typeof(db[3]) !== 'undefined') {
 		dbname = db[3];
 	}
 
-	var args = ['--db', dbname, '--out', path + '../backup/' + dbname + '-' + date.getTime(), '--quiet'];
+	var args = ['--db', dbname, '--out', path + '/../backup/' + dbname + '-' + date.getTime(), '--quiet'];
 	var mongodump = spawn('/usr/local/bin/mongodump', args);
 
 	mongodump.stdout.on('data', function (data) {
@@ -193,6 +201,10 @@ Seeder.prototype.dump = function(path) {
 	mongodump.on('exit', function (code) {
 	   	console.log(chalk.green('Successfully dump mongoose-seed'));
 	});
+
+	if (cb && typeof(cb) === 'function') {
+		cb();
+	}
 }
 
 module.exports = new Seeder();
