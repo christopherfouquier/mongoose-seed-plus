@@ -19,7 +19,9 @@ seeder.connect('mongodb://localhost:27017/mongoose-seed-plus-dev', function() {
     seeder.start(__dirname + '/migrations', [
         { path: 'models/Product.js', name: 'Product', clear: true },
         { path: 'models/User.js', name: 'User', clear: true },
-    ], true);
+    ], true, function() {
+        process.exit();
+    });
 });
 
 
@@ -68,7 +70,7 @@ Create file `.json` in folder `migrations`.
 
 Initializes connection to MongoDB via Mongoose singleton.
 
-### seeder.start(path, models, [dump])
+### seeder.start(path, models, [[dump], [callback]])
 
 ```Javascript
 seeder.start(__dirname + '/migrations',
@@ -80,5 +82,8 @@ seeder.start(__dirname + '/migrations',
      */
     { path: 'models/User.js', name: 'User', clear: true },
     { path: 'models/Product.js', name: 'Product', clear: false },
-], true);
+], true, function() {
+    // My callback
+    console.log('end');
+});
 ```

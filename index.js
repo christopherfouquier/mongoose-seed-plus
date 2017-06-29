@@ -4,11 +4,11 @@
  * Module dependencies.
  **/
 var _ 			= require('lodash'),
-	fs 			= require('fs'),
+	fs 				= require('fs'),
 	async 		= require('async'),
 	mongoose 	= require('mongoose'),
 	chalk 		= require('chalk'),
-	path 		= require('path'),
+	path 			= require('path'),
 	spawn 		= require('child_process').spawn;
 
 function Seeder() {
@@ -31,7 +31,7 @@ Seeder.prototype.connect = function(db, cb) {
 	});
 };
 
-Seeder.prototype.start = function(path, models, dump) {
+Seeder.prototype.start = function(path, models, dump, cb) {
 	var _this = this;
 
 	if (dump && typeof(dump) === 'boolean' && dump === true) {
@@ -39,7 +39,7 @@ Seeder.prototype.start = function(path, models, dump) {
 			_this.loadModels(models);
 			_this.clearModels(models, function() {
 				_this.readData(path, models, function(data) {
-					_this.populateModels(data);
+					_this.populateModels(data, cb);
 				});
 			});
 		});
@@ -47,7 +47,7 @@ Seeder.prototype.start = function(path, models, dump) {
 		this.loadModels(models);
 		this.clearModels(models, function() {
 			_this.readData(path, models, function(data) {
-				_this.populateModels(data);
+				_this.populateModels(data, cb);
 			});
 		});
 	}
@@ -134,7 +134,7 @@ Seeder.prototype.clearModels = function(models, cb) {
 	});
 };
 
-Seeder.prototype.populateModels = function(seedData) {
+Seeder.prototype.populateModels = function(seedData, cb) {
 	if(!this.connected) {
 		return new Error('Not connected to db, exiting function');
 	}
@@ -171,7 +171,9 @@ Seeder.prototype.populateModels = function(seedData) {
 					if (count === 0) {
 						mongoose.connection.close();
 						console.log(chalk.green('Successfully populate mongoose-seed'));
-						process.exit();
+						if (cb && typeof(cb) === 'function') {
+							cb();
+						}
 					}
 				});
 			});
