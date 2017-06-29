@@ -1,0 +1,14 @@
+## File tmp
+*~
+.DS_Store
+thumbs.db
+
+## Ide
+.buildpath
+.project
+.settings/
+.idea
+
+node_modules/
+*.log
+logs
