@@ -12,7 +12,7 @@ $ npm install mongoose-seed-plus
 ## ■ Basic usage
 
 ```javascript
-var seeder = require('../index.js');
+var seeder = require('mongoose-seed-plus');
 var chalk  = require('chalk');
 var path   = require('path');
 
