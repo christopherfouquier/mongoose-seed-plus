@@ -1,33 +1,57 @@
-# mongoose-seed-plus
+# Mongoose Seed Plus
 
-mongoose-seed-plus lets you populate and clear MongoDB documents with all the benefits of Mongoose validation
+Mongoose-Seed-Plus lets you populate and clear MongoDB documents with all the benefits of Mongoose validation
 
+## ■ Installation
+
+Use NPM or Yarn
 ```
-npm install mongoose-seed-plus --save-dev
+$ npm install mongoose-seed-plus
 ```
 
-## Basic example
+## ■ Basic usage
 
 ```javascript
-// open => seed.js
-var seeder = require('mongoose-seed-plus');
+var seeder = require('../index.js');
+var chalk  = require('chalk');
+var path   = require('path');
 
-// Connect to MongoDB via Mongoose
-seeder.connect('mongodb://localhost:27017/mongoose-seed-plus-dev', function() {
+var options = {
+  mongodb: {
+    host: "localhost",
+    port: 27017,
+    dbname: "mongoose-seed-plus-dev"
+  },
+  dump: {
+    enable: true
+  },
+  models: [
+    { path: 'models/User.js', name: 'User', clear: true },
+    { path: 'models/Product.js', name: 'Product', clear: true }
+  ],
+  path: path.join(__dirname, '/migrations')
+};
 
-    // Start processing...
-    seeder.start(__dirname + '/migrations', [
-        { path: 'models/Product.js', name: 'Product', clear: true },
-        { path: 'models/User.js', name: 'User', clear: true },
-    ], true, function() {
-        process.exit();
-    });
+new seeder(options, function(err, result) {
+  if (err) {
+    throw err.message;
+  }
+
+  console.log(`Successfully connected to MongoDB: ${chalk.grey(result.db)}\n`);
+
+  if (result.cleared) {
+    console.log(`Cleared models: ${chalk.grey(result.cleared)}\n`);
+  }
+
+  console.log(chalk.cyan('Seeding Results'));
+  for (var prop in result.populate) {
+    console.log(`${prop}: ${chalk.grey(result.populate[prop])}`);
+  }
+  process.exit(1);
 });
-
-
 ```
 
-## Data files
+## ■ Data files
 
 Create file `.json` in folder `migrations`.
 
@@ -41,49 +65,37 @@ Create file `.json` in folder `migrations`.
 ```
 
 #### Example
-```Javascript
-// open => migrations/users.json
-// Data object containing seed data - documents organized by Model
+Data object containing seed data - documents organized by Model
+```javascript
 {
     "model": "User",
     "documents": [
         {
-            "firstname": "Christopher",
-            "lastname": "Fouquier",
-            "email": "christopher.fouquier@gmail.com",
-            "password": "root",
-            "role": "admin"
-        },
-        {
             "firstname": "John",
             "lastname": "Doe",
             "email": "john.doe@awesome.com",
-            "password": "123"
+            "password": "123456"
         }
     ]
 }
 ```
 
-## Methods
+## ■ Methods
 
-### seeder.connect(db, [callback])
+### seeder(options, [callback])
 
-Initializes connection to MongoDB via Mongoose singleton.
-
-### seeder.start(path, models, [[dump], [callback]])
-
-```Javascript
-seeder.start(__dirname + '/migrations',
-[
-    /**
-     * @path (string, required) : path to model
-     * @name (string, required) : name of model
-     * @clear (boolean, required) : clear DB collection
-     */
-    { path: 'models/User.js', name: 'User', clear: true },
-    { path: 'models/Product.js', name: 'Product', clear: false },
-], true, function() {
-    // My callback
-    console.log('end');
-});
-```
+| Options | Description | Default | Type | Required |
+| --- | --- | --- | --- | --- |
+| path | Path to folder migrations JSON files | "" | (string) | true |
+| models | List of models | [] | (array) | true |
+| models[].path | Path to a model | "" | (string) | true |
+| models[].name | Name a model | "" | (string) | true |
+| models[].clear | Clear collection mongo | true | (boolean) | false |
+| dump | Option dump | {} | (object) | false |
+| dump.bin | Path to bin mongodump | "/usr/local/bin/mongodump" | (string) | false |
+| dump.args | Arguments for mongodump | [ '--db', "mongoose-seed-plus-dev", '--out', "", '--quiet' ] | (array) | false |
+| dump.enable | Enable dump | false | (boolean) | false |
+| mongodb | Option mongodb | {} | (object) | false |
+| mongodb.host | Host to MongoDB | "localhost" | (string) | false |
+| mongodb.port | Port to MongoDB | 27017 | (integer) | false |
+| mongodb.dbname | DB name to MongoDB | "mongoose-seed-plus-dev" | (string) | false |
