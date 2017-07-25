@@ -7,206 +7,235 @@ var _ 			= require('lodash'),
 	fs 				= require('fs'),
 	async 		= require('async'),
 	mongoose 	= require('mongoose'),
-	chalk 		= require('chalk'),
 	path 			= require('path'),
 	spawn 		= require('child_process').spawn;
 
-function Seeder() {
-	this.connected = false;
+function Seeder(options, callback) {
+	var that = this;
+
+	this.result = {
+		db: "",
+		cleared: [],
+		populate: {}
+	};
+
+	// Set default options
+	var defaultOptions = {
+		mongodb: {
+        host: "localhost",
+        port: 27017,
+        dbname: "mongoose-seed-plus-dev"
+    },
+    dump: {
+        bin: "/usr/local/bin/mongodump",
+        enable: false,
+        args: []
+    },
+    models: [],
+    path: ""
+	};
+
+	defaultOptions.dump.args = [
+		'--db', options.mongodb.dbname || defaultOptions.mongodb.dbname,
+		'--out', "",
+		'--quiet'
+  ];
+
+	var args = [];
+	if (options.dump.args) {
+		args = _.concat(defaultOptions.dump.args, options.dump.args);
+	}
+
+	this.options = _.merge(defaultOptions, options);
+	this.options.dump.args = args;
+
+	async.waterfall([
+		function connect(callback) {
+			return that.connect(callback);
+		},
+		function dump(callback) {
+			if (that.options.dump.enable) {
+				return that.dump(callback);
+			}
+
+			return callback();
+		},
+		function loadModels(callback) {
+			return that.loadModels(callback);
+		},
+		function clearModels(callback) {
+			return that.clearModels(callback);
+		},
+		function readData(callback) {
+			return that.readData(callback);
+		},
+		function populateModels(data, callback) {
+			return that.populateModels(data, callback);
+		},
+	], function (err) {
+		if (err) {
+			return callback(err, null);
+		}
+
+		mongoose.connection.close();
+		return callback(null, that.result);
+	});
 }
 
-Seeder.prototype.connect = function(db, cb) {
-	var _this = this;
-	this.db = db;
-	mongoose.connect(db, function(err) {
-		// Log Error
-		if (err) {
-			console.error(chalk.red('Could not connect to MongoDB!'));
-			console.log(err);
-		} else {
-			_this.connected = true;
-			console.log(chalk.green('Successfully initialized mongoose-seed'));
-			cb();
-		}
-	});
+Seeder.prototype.connect = function(callback) {
+	var dbURI = 'mongodb://'+ this.options.mongodb.host +':'+ this.options.mongodb.port +'/'+ this.options.mongodb.dbname;
+	this.result.db = dbURI;
+
+	mongoose.connect(dbURI, { useMongoClient: true });
+
+  mongoose.connection.on('connected', function() {
+    return callback();
+  });
+
+  mongoose.connection.on('error', function(err) {
+    return callback({ "code": "connect", message: "Could not connect to MongoDB!", error: err });
+  });
 };
 
-Seeder.prototype.start = function(path, models, dump, cb) {
-	var _this = this;
-
-	if (dump && typeof(dump) === 'boolean' && dump === true) {
-		this.dump(path, function() {
-			_this.loadModels(models);
-			_this.clearModels(models, function() {
-				_this.readData(path, models, function(data) {
-					_this.populateModels(data, cb);
-				});
-			});
-		});
-	} else {
-		this.loadModels(models);
-		this.clearModels(models, function() {
-			_this.readData(path, models, function(data) {
-				_this.populateModels(data, cb);
-			});
-		});
+Seeder.prototype.dump = function(callback) {
+	try {
+		var mongodump = spawn(this.options.dump.bin, this.options.dump.args);
 	}
-};
+	catch (err) {
+		return callback({ code: "dump", message: 'Could not dump ' + this.options.mongodb.dbname, error: err });
+	}
 
-Seeder.prototype.readData = function(path, models, cb) {
-	var data = [];
-	var migrations_path = path;
-	var files = fs.readdirSync(migrations_path);
-	var count = files.length;
-	files.forEach(function (file, i) {
-	    if (~file.indexOf('.json')) {
-	        var model = require(migrations_path + '/' + file);
-	        data.push(model);
-	    }
-	    if (count === (i + 1)) {
-	    	cb(data);
-	    }
+	mongodump.on('exit', function () {
+		return callback();
 	});
 };
 
-Seeder.prototype.loadModels = function(models) {
-	models.forEach(function(model) {
-		require(path.resolve(model.path));
+Seeder.prototype.loadModels = function(callback) {
+	var models = this.options.models;
+	async.each(models, function(model, callback) {
+		try {
+			require(path.resolve(model.path));
+		}
+		catch (e) {
+			return callback({ code: 'load', message: e.message, error: e });
+		}
+
+		return callback();
+	}, function(err) {
+		if (err) {
+			return callback(err);
+		}
+
+		return callback();
 	});
 };
 
-Seeder.prototype.invalidModelCheck = function(models, cb) {
+Seeder.prototype.clearModels = function(callback) {
 	var invalidModels = [];
+	var models = this.options.models;
+	var that = this;
 
+	// Convert to array if not already
+	if (!Array.isArray(models)) {
+		return callback({ code: 'clear', message: "Invalid model type" });
+	}
+
+	// Confirm that all Models have been registered in Mongoose
 	models.forEach(function(model) {
-		if(_.indexOf(mongoose.modelNames(), model) === -1) {
-			invalidModels.push(model);
+		if(_.indexOf(mongoose.modelNames(), model.name) === -1) {
+			invalidModels.push(model.name);
 		}
 	});
 
 	if (invalidModels.length) {
-		cb(new Error('Models not registered in Mongoose: ' + invalidModels));
-	} else {
-		cb();
-	}
-};
-
-Seeder.prototype.clearModels = function(models, cb) {
-	if(!this.connected) {
-		return new Error('Not connected to db, exiting function');
+		return callback({ code: 'model', message: "Models not registered in Mongoose: " + invalidModels});
 	}
 
-	var modelNames = [];
-
-	// Convert to array if not already
-	if (Array.isArray(models)) {
-		models.forEach(function(model) {
-			modelNames.push(model.name);
-		});
-	} else {
-		console.error(chalk.red('Error: Invalid model type'));
-		return;
-	}
-
-	// Confirm that all Models have been registered in Mongoose
-	var invalidModels = this.invalidModelCheck(modelNames, function(err) {
-		if (err) {
-			console.error(chalk.red('Error: ' + err.message));
-			return;
-		}
-
-		// Clear each model
-		async.each(modelNames, function(modelName, done) {
-			var Model = mongoose.model(modelName);
+	// Clear each model
+	async.each(models, function(model, done) {
+		if (model.clear) {
+			var Model = mongoose.model(model.name);
 			Model.remove({}, function(err) {
 				if (err) {
-					console.error(chalk.red('Error: ' + err.message));
-					return;
+					return done({ code: 'model', message: 'Unable to clean model', error: err });
 				}
-				console.log(modelName + 's collection cleared');
+
+				that.result.cleared.push(model.name);
+				done();
+			});
+		}
+		else {
+			done();
+		}
+	}, function(err) {
+		if (err) {
+			return callback(err);
+		}
+
+		return callback();
+	});
+};
+
+Seeder.prototype.readData = function(callback) {
+	var data = [];
+	var migrations_path = this.options.path;
+	var files = fs.readdirSync(migrations_path);
+
+	async.each(files, function(file, done) {
+		if (~file.indexOf('.json')) {
+			try {
+				var model = require(migrations_path + '/' + file);
+			}
+			catch (e) {
+				return done({ code: 'read', message: e.message, error: e });
+			}
+
+      data.push(model);
+    }
+
+    done();
+	}, function(err) {
+		if (err) {
+			return callback(err);
+		}
+
+		return callback(null, data);
+	});
+};
+
+Seeder.prototype.populateModels = function(seedData, callback) {
+	var that = this;
+	async.each(seedData, function(entry, done) {
+		var Model = mongoose.model(entry.model);
+		async.each(entry.documents, function(document, done) {
+			Model.create(document, function(err) {
+				if (err) {
+					return done({ code: 'populate', message: 'Unable to create document .', error: err });
+				}
+
+				if (that.result.populate[entry.model]) {
+					that.result.populate[entry.model] = that.result.populate[entry.model] + 1;
+				}
+				else {
+					that.result.populate[entry.model] = 1;
+				}
+
 				done();
 			});
 		}, function(err) {
-		// Final async callback
-			if(err) { return; }
-			cb();
+			if (err) {
+				return done(err);
+			}
+
+			done();
 		});
-	});
-};
-
-Seeder.prototype.populateModels = function(seedData, cb) {
-	if(!this.connected) {
-		return new Error('Not connected to db, exiting function');
-	}
-
-	var modelNames = _.unique(_.pluck(seedData,'model'));
-
-	// Confirm that all Models have been registered in Mongoose
-	var invalidModels = this.invalidModelCheck(modelNames, function(err) {
+	}, function(err) {
 		if (err) {
-			console.error(chalk.red('Error: ' + err.message));
-			return;
+			return callback(err);
 		}
 
-		// Get a count of all the documents so we can close the connection when its done
-		var count = 0;
-		for (var i = 0; i < seedData.length; i++) {
-			count += seedData[i].documents.length;
-		}
-
-		// Populate each model
-		seedData.forEach(function(entry, i) {
-			var Model = mongoose.model(entry.model);
-			entry.documents.forEach(function(document, j) {
-				Model.create(document, function(err) {
-					if (err) {
-						console.error(chalk.red('Error creating document [' + j + '] of ' + entry.model + ' model'));
-						console.error(chalk.red('Error: ' + err.message));
-						return;
-					}
-					console.log('Successfully created document [' + j + '] of ' + entry.model + ' model');
-
-					// decrement count and close connection if all done
-					count--;
-					if (count === 0) {
-						mongoose.connection.close();
-						console.log(chalk.green('Successfully populate mongoose-seed'));
-						if (cb && typeof(cb) === 'function') {
-							cb();
-						}
-					}
-				});
-			});
-		});
-
+		return callback();
 	});
 };
 
-Seeder.prototype.dump = function(path, cb) {
-	var db = this.db.split('/'),
-		dbname = '',
-		date = new Date();
-
-	if (typeof(db[3]) !== 'undefined') {
-		dbname = db[3];
-	}
-
-	var args = ['--db', dbname, '--out', path + '/../backup/' + dbname + '-' + date.getTime(), '--quiet'];
-	var mongodump = spawn('/usr/local/bin/mongodump', args);
-
-	mongodump.stdout.on('data', function (data) {
-	   	console.error(chalk.red('stdout: ' + data));
-	});
-	mongodump.stderr.on('data', function (data) {
-	   	console.error(chalk.red('stderr: ' + data));
-	});
-	mongodump.on('exit', function (code) {
-	   	console.log(chalk.green('Successfully dump mongoose-seed'));
-	});
-
-	if (cb && typeof(cb) === 'function') {
-		cb();
-	}
-}
-
-module.exports = new Seeder();
+module.exports = Seeder;
