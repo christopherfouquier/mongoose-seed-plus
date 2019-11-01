@@ -35,6 +35,6 @@
   },
   "devDependencies": {
     "chalk": "~1.0.0",
-    "eslint": "4.3.0"
+    "eslint": "6.6.0"
   }
 }
